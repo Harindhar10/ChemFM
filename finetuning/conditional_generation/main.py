@@ -105,12 +105,25 @@ def main():
     hfparser = transformers.HfArgumentParser((
         ModelArguments, DataArguments, TrainingArguments
     ))
-    model_args, data_args, training_args, extra_args = \
+    import sys
+    model_args, data_args, training_args, _ = \
         hfparser.parse_args_into_dataclasses(return_remaining_strings=True)
 
-    # if training_args_file is provided, overwrite the arguments with the arguments in the file
+    # if training_args_file is provided, overwrite the arguments with the arguments in the file,
+    # then re-apply values that were explicitly passed on the CLI so they take precedence
     if training_args.training_args_file is not None:
+        explicit_keys = {
+            arg.lstrip("-").split("=")[0].replace("-", "_")
+            for arg in sys.argv if arg.startswith("--")
+        }
+        pre_yaml = {**vars(model_args), **vars(data_args), **vars(training_args)}
+        cli_overrides = {k: v for k, v in pre_yaml.items() if k in explicit_keys}
         model_args, data_args, training_args = hfparser.parse_yaml_file(training_args.training_args_file)
+        for k, v in cli_overrides.items():
+            for ns in (model_args, data_args, training_args):
+                if hasattr(ns, k):
+                    setattr(ns, k, v)
+
     args = argparse.Namespace(
         **vars(model_args), **vars(data_args), **vars(training_args)
     )
