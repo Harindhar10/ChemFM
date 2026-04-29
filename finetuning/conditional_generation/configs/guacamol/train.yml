@@ -1,5 +1,6 @@
 {
   dataset: "guacamol",
+  data_dir: "./data_temp",
   has_scaffold: False,
   scaffold_aug_prob: 0.0,
   molecule_target_aug_prob: 1.0,

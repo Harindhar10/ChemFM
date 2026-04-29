@@ -47,7 +47,7 @@ def load_model_and_tokenizer(model_args, args):
         use_fast=True,
         trust_remote_code=args.trust_remote_code
         )
-    
+
     # load model
     config = AutoConfig.from_pretrained(
         model_args.pretrain_model,
@@ -70,7 +70,7 @@ def load_model_and_tokenizer(model_args, args):
         model=model
     )
     model.config.pad_token_id = tokenizer.pad_token_id
-    
+
     # apply lora if specified
     if args.lora:
         raise NotImplementedError("LORA is not implemented yet.")
@@ -130,7 +130,7 @@ def main():
     # set the min learning rate for the optimizer
     if args.min_learning_rate is not None:
         training_args.lr_scheduler_kwargs["min_lr"] = args.min_learning_rate
-    
+
     # set the trainer
     trainer = Seq2SeqTrainer(
         model=model,
@@ -141,7 +141,7 @@ def main():
     train_result = trainer.train()
     metrics = train_result.metrics
     trainer.log_metrics("train", metrics)
-    
+
 
 if __name__ == "__main__":
     main()

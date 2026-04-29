@@ -55,6 +55,10 @@ class DataArguments:
         default="MOSES",
         metadata={"help": "The dataset name."}
     )
+    data_dir: Optional[str] = field(
+        default="data_temp",
+        metadata={"help": "Root directory containing dataset folders."}
+    )
     string_template_path: Optional[str] = field(
         default="./string_template.json",
         metadata={"help": "The path to the string template."}
@@ -146,7 +150,7 @@ def smart_tokenizer_and_embedding_resize(
 def make_data_module(tokenizer: transformers.PreTrainedTokenizer, ignore_index, args) -> Dict:
 
     # Load dataset.
-    dataset_path = os.path.join("data_temp", args.dataset)
+    dataset_path = os.path.join(args.data_dir, args.dataset)
     train_dataset = Dataset.from_pandas(pd.read_csv(os.path.join(dataset_path, "train_data.csv")))
     eval_dataset = Dataset.from_pandas(pd.read_csv(os.path.join(dataset_path, "val_data.csv")))
 
