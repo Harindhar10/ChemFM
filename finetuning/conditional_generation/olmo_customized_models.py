@@ -30,7 +30,11 @@ class OlmoConditionalGenModule(pl.LightningModule):
         properties: List[List[float]],
         properties_index: List[List[int]],
     ) -> torch.FloatTensor:
-        embeddings = self.model.get_input_embeddings()(input_ids)
+        # .clone() is required: with gradient checkpointing the embedding output is a
+        # leaf variable, and in-place index assignment on a leaf that requires grad raises
+        # "RuntimeError: a view of a leaf Variable that requires grad is being used in an
+        # in-place operation."
+        embeddings = self.model.get_input_embeddings()(input_ids).clone()
         embed_dtype = embeddings.dtype
         embed_device = embeddings.device
 
