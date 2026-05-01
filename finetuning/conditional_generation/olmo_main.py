@@ -73,7 +73,7 @@ def load_model_and_tokenizer(model_args, args):
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
         # bfloat16 for training stability (float16 is for inference only)
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_compute_dtype=torch.float16,
     )
 
     # Do NOT pass device_map="auto" — Lightning manages device placement
