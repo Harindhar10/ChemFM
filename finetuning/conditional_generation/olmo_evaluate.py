@@ -44,10 +44,6 @@ class OlmoEvalArguments:
     output_dir: str = field(default="./outputs/olmo")
     seed: int = field(default=0)
     training_args_file: Optional[str] = field(default=None)
-    learning_rate: float = field(default=2e-4)
-    weight_decay: float = field(default=0.01)
-    warmup_ratio: float = field(default=0.03)
-    lr_scheduler_type: str = field(default="cosine")
     max_test_samples: Optional[int] = field(default=None)
 
 
