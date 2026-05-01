@@ -42,3 +42,6 @@ logging_steps: 10
 eval_steps: 500
 save_steps: 500
 num_workers: 4
+# Set to an integer to use only a subset of data (useful for debugging)
+max_train_samples: null
+max_val_samples: null

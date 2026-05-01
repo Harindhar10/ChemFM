@@ -23,3 +23,5 @@ target_max_len: 512
 # Generation
 generation_config_path: "./configs/guacamol/generation_configs/TPSA_logp_SAS.json"
 generation_output_path: "./outputs/olmo_guacamol/final_adapter/generations/TPSA_logp_SAS.csv"
+# Set to an integer to generate from only a subset of the test samples (useful for debugging)
+max_test_samples: null

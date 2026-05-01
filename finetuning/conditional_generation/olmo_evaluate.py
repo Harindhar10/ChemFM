@@ -48,6 +48,7 @@ class OlmoEvalArguments:
     weight_decay: float = field(default=0.01)
     warmup_ratio: float = field(default=0.03)
     lr_scheduler_type: str = field(default="cosine")
+    max_test_samples: Optional[int] = field(default=None)
 
 
 def load_model_and_tokenizer(model_args, args):
@@ -257,6 +258,8 @@ def evaluate():
         tokenizer=tokenizer, ignore_index=IGNORE_INDEX, args=args
     )
     data_collator = data_module["data_collator"]
+    if args.max_test_samples is not None:
+        data_module["test_dataset"] = data_module["test_dataset"].select(range(args.max_test_samples))
     test_loader = DataLoader(
         data_module["test_dataset"],
         batch_size=1,

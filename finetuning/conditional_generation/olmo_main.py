@@ -58,6 +58,8 @@ class OlmoTrainingArguments:
     precision: str = field(default="bf16-mixed")
     training_args_file: Optional[str] = field(default=None)
     num_workers: int = field(default=4)
+    max_train_samples: Optional[int] = field(default=None)
+    max_val_samples: Optional[int] = field(default=None)
 
 
 def load_model_and_tokenizer(model_args, args):
@@ -154,6 +156,11 @@ def main():
     model, tokenizer = load_model_and_tokenizer(model_args, args)
 
     data_module = make_data_module(tokenizer=tokenizer, ignore_index=IGNORE_INDEX, args=args)
+
+    if args.max_train_samples is not None:
+        data_module["train_dataset"] = data_module["train_dataset"].select(range(args.max_train_samples))
+    if args.max_val_samples is not None:
+        data_module["eval_dataset"] = data_module["eval_dataset"].select(range(args.max_val_samples))
 
     train_loader = DataLoader(
         data_module["train_dataset"],

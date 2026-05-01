@@ -95,14 +95,6 @@ class DataArguments:
         default=None,
         metadata={"help": "The path to the generation output file. This is only used in the generation mode."}
     )
-    max_train_samples: Optional[int] = field(
-        default=None,
-        metadata={"help": "Truncate training set to this many samples. Useful for quick debugging runs."}
-    )
-    max_val_samples: Optional[int] = field(
-        default=None,
-        metadata={"help": "Truncate validation set to this many samples. Useful for quick debugging runs."}
-    )
     
 
 @dataclass
@@ -163,14 +155,8 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, ignore_index, 
 
     # Load dataset.
     dataset_path = os.path.join(args.data_dir, args.dataset)
-    train_df = pd.read_csv(os.path.join(dataset_path, "train_data.csv"))
-    val_df = pd.read_csv(os.path.join(dataset_path, "val_data.csv"))
-    if args.max_train_samples is not None:
-        train_df = train_df.iloc[:args.max_train_samples]
-    if args.max_val_samples is not None:
-        val_df = val_df.iloc[:args.max_val_samples]
-    train_dataset = Dataset.from_pandas(train_df)
-    eval_dataset = Dataset.from_pandas(val_df)
+    train_dataset = Dataset.from_pandas(pd.read_csv(os.path.join(dataset_path, "train_data.csv")))
+    eval_dataset = Dataset.from_pandas(pd.read_csv(os.path.join(dataset_path, "val_data.csv")))
 
     # load the string template
     string_template = json.load(open(args.string_template_path, 'r'))
