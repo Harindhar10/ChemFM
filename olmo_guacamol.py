@@ -15,7 +15,7 @@ model = AutoModelForCausalLM.from_pretrained('harindhar10/OLMo-7B-fsdp-Pubchem-5
                                             trust_remote_code=True,
                                             low_cpu_mem_usage = True,
                                             quantization_config= bnb_config,
-                                            dtype=torch.bfloat16)
+                                            dtype=torch.float16)
 
 task_type = "CAUSAL_LM"
 
