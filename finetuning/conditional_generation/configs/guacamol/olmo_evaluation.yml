@@ -7,6 +7,12 @@ tokenizer_path: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
 trust_remote_code: True
 model_path: "./outputs/olmo_guacamol/final_adapter"
 
+# LoRA — all fields map to ModelArguments
+lora_rank: 32
+lora_alpha_ratio: 2.0
+lora_dropout: 0.05
+lora_target_modules: "q_proj,k_proj,v_proj"
+
 # Data
 dataset: "guacamol"
 has_scaffold: False

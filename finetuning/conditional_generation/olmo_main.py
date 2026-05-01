@@ -10,7 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger
 from torch.utils.data import DataLoader
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -57,10 +57,6 @@ class OlmoTrainingArguments:
     save_steps: int = field(default=500)
     precision: str = field(default="bf16-mixed")
     training_args_file: Optional[str] = field(default=None)
-    lora_r: int = field(default=32)
-    lora_alpha: int = field(default=64)
-    lora_dropout: float = field(default=0.05)
-    lora_target_modules: List[str] = field(default_factory=lambda: ["q_proj", "k_proj", "v_proj"])
     num_workers: int = field(default=4)
 
 
@@ -90,10 +86,16 @@ def load_model_and_tokenizer(model_args, args):
 
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
+    # lora_rank, lora_alpha_ratio, lora_dropout, lora_target_modules all come from ModelArguments
+    target_modules = (
+        [m.strip() for m in args.lora_target_modules.split(",")]
+        if args.lora_target_modules
+        else ["q_proj", "k_proj", "v_proj"]
+    )
     lora_cfg = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        target_modules=args.lora_target_modules,
+        r=args.lora_rank,
+        lora_alpha=int(args.lora_alpha_ratio * args.lora_rank),
+        target_modules=target_modules,
         lora_dropout=args.lora_dropout,
         bias="none",
         task_type="CAUSAL_LM",

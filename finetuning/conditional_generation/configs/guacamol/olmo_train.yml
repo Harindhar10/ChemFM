@@ -6,11 +6,11 @@ pretrain_model: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
 tokenizer_path: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
 trust_remote_code: True
 
-# LoRA
-lora_r: 32
-lora_alpha: 64
+# LoRA — all fields map to ModelArguments
+lora_rank: 32
+lora_alpha_ratio: 2.0    # lora_alpha = lora_alpha_ratio * lora_rank = 64
 lora_dropout: 0.05
-lora_target_modules: ["q_proj", "k_proj", "v_proj"]
+lora_target_modules: "q_proj,k_proj,v_proj"
 
 # Data
 dataset: "guacamol"

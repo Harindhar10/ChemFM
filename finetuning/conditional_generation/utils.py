@@ -39,6 +39,10 @@ class ModelArguments:
         default=0.1,
         metadata={"help": "The dropout rate for LORA."}
     )
+    lora_target_modules: Optional[str] = field(
+        default=None,
+        metadata={"help": "Comma-separated list of module names to apply LoRA to, e.g. 'q_proj,k_proj,v_proj'."}
+    )
     trust_remote_code: Optional[bool] = field(
         default=False,
         metadata={"help": "Enable unpickling of arbitrary code in AutoModelForCausalLM#from_pretrained."}

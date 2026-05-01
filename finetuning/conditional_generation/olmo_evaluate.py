@@ -7,7 +7,7 @@ import torch
 import transformers
 import pandas as pd
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional
 from accelerate import Accelerator
 from peft import PeftModel
 from torch.utils.data import DataLoader
@@ -44,12 +44,6 @@ class OlmoEvalArguments:
     output_dir: str = field(default="./outputs/olmo")
     seed: int = field(default=0)
     training_args_file: Optional[str] = field(default=None)
-    lora_r: int = field(default=32)
-    lora_alpha: int = field(default=64)
-    lora_dropout: float = field(default=0.05)
-    lora_target_modules: List[str] = field(
-        default_factory=lambda: ["q_proj", "k_proj", "v_proj"]
-    )
     learning_rate: float = field(default=2e-4)
     weight_decay: float = field(default=0.01)
     warmup_ratio: float = field(default=0.03)
