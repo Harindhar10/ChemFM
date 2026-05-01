@@ -100,12 +100,13 @@ def load_model_and_tokenizer(model_args, args):
     )
     model = get_peft_model(model, lora_cfg)
 
-    special_tokens_dict = dict(pad_token=DEFAULT_PAD_TOKEN)
-    smart_tokenizer_and_embedding_resize(
-        special_tokens_dict=special_tokens_dict,
-        tokenizer=tokenizer,
-        model=model,
-    )
+    if tokenizer.pad_token is None:
+        special_tokens_dict = dict(pad_token=DEFAULT_PAD_TOKEN)
+        smart_tokenizer_and_embedding_resize(
+            special_tokens_dict=special_tokens_dict,
+            tokenizer=tokenizer,
+            model=model,
+        )
     model.config.pad_token_id = tokenizer.pad_token_id
     # Required for gradient checkpointing compatibility
     model.config.use_cache = False
