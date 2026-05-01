@@ -1,0 +1,19 @@
+# OLMo conditional generation evaluation config — GuacaMol dataset
+# Run: python olmo_evaluate.py --training_args_file configs/guacamol/olmo_evaluation.yml
+
+# Model
+pretrain_model: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
+tokenizer_path: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
+trust_remote_code: True
+model_path: "./outputs/olmo_guacamol/final_adapter"
+
+# Data
+dataset: "guacamol"
+has_scaffold: False
+scaffold_aug_prob: 0.0
+source_max_len: 512
+target_max_len: 512
+
+# Generation
+generation_config_path: "./configs/guacamol/generation_configs/TPSA_logp_SAS.json"
+generation_output_path: "./outputs/olmo_guacamol/final_adapter/generations/TPSA_logp_SAS.csv"

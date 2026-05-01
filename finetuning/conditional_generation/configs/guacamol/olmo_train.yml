@@ -1,0 +1,44 @@
+# OLMo conditional generation training config — GuacaMol dataset
+# Run: python olmo_main.py --training_args_file configs/guacamol/olmo_train.yml
+
+# Model
+pretrain_model: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
+tokenizer_path: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
+trust_remote_code: True
+
+# LoRA
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_target_modules: ["q_proj", "k_proj", "v_proj"]
+
+# Data
+dataset: "guacamol"
+data_dir: "./data_temp"
+has_scaffold: False
+scaffold_aug_prob: 0.0
+molecule_target_aug_prob: 1.0
+source_max_len: 512
+target_max_len: 512
+
+# Training
+num_train_epochs: 10
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 2
+# effective batch size = 2 * 16 = 32 (matches ChemFM-3B run of 12 * 4 = 48)
+gradient_accumulation_steps: 16
+learning_rate: 6.0e-4
+min_learning_rate: 6.0e-5
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_ratio: 0.01
+lr_scheduler_type: "cosine"
+precision: "bf16-mixed"
+seed: 0
+
+# Logging / checkpointing
+output_dir: "./outputs/olmo_guacamol"
+logging_steps: 10
+eval_steps: 500
+save_steps: 500
+num_workers: 4
