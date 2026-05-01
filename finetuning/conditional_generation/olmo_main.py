@@ -53,13 +53,17 @@ class OlmoTrainingArguments:
     warmup_ratio: float = field(default=0.03)
     seed: int = field(default=0)
     logging_steps: int = field(default=10)
-    eval_steps: int = field(default=500)
+    num_val_per_epoch: int = field(default=1)
     save_steps: int = field(default=500)
     precision: str = field(default="bf16-mixed")
     training_args_file: Optional[str] = field(default=None)
+    run_id: Optional[str] = field(default=None)
     num_workers: int = field(default=4)
     max_train_samples: Optional[int] = field(default=None)
     max_val_samples: Optional[int] = field(default=None)
+    wandb_logging: bool = field(default=False)
+    wandb_key: Optional[str] = field(default=None)
+    wandb_notes: Optional[str] = field(default=None)
 
 
 def load_model_and_tokenizer(model_args, args):
@@ -181,9 +185,10 @@ def main():
 
     lit_model = OlmoConditionalGenModule(model=model, tokenizer=tokenizer, args=args)
 
+    run_name = args.run_id or "olmo-cond-gen"
     checkpoint_callback = ModelCheckpoint(
         dirpath=args.output_dir,
-        filename="olmo-cond-gen-{epoch:02d}-{val_loss:.4f}",
+        filename=f"{run_name}-{{epoch:02d}}-{{val_loss:.4f}}",
         monitor="val_loss",
         mode="min",
         save_top_k=3,
@@ -193,7 +198,19 @@ def main():
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
     os.makedirs(args.output_dir, exist_ok=True)
-    csv_logger = CSVLogger(save_dir=args.output_dir, name="logs")
+    loggers = [CSVLogger(save_dir=args.output_dir, name="logs")]
+
+    if args.wandb_logging:
+        import wandb
+        from pytorch_lightning.loggers import WandbLogger
+        if args.wandb_key:
+            wandb.login(key=args.wandb_key)
+        loggers.append(WandbLogger(
+            project="olmo-conditional-generation",
+            name=run_name,
+            log_model=False,
+            notes=args.wandb_notes,
+        ))
 
     trainer = pl.Trainer(
         max_epochs=args.num_train_epochs,
@@ -203,10 +220,10 @@ def main():
         accumulate_grad_batches=args.gradient_accumulation_steps,
         gradient_clip_val=args.max_grad_norm,
         log_every_n_steps=args.logging_steps,
-        # Integer: check validation every N batches (not optimizer steps)
-        val_check_interval=args.eval_steps,
+        # Fraction of epoch: 1/num_val_per_epoch triggers validation that many times per epoch
+        val_check_interval=1.0 / args.num_val_per_epoch,
         callbacks=[checkpoint_callback, lr_monitor],
-        logger=csv_logger,
+        logger=loggers,
         enable_progress_bar=True,
         # BnB custom CUDA kernels are non-deterministic; forcing determinism raises errors
         deterministic=False,

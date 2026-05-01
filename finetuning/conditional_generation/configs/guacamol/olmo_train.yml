@@ -39,9 +39,17 @@ seed: 0
 # Logging / checkpointing
 output_dir: "./outputs/olmo_guacamol"
 logging_steps: 10
-eval_steps: 500
+num_val_per_epoch: 2     # validate twice per epoch (val_check_interval = 0.5)
 save_steps: 500
 num_workers: 4
+
+# Run identity
+run_id: "olmo-guacamol-run1"
+
+# W&B — set wandb_logging: true to enable
+wandb_logging: false
+wandb_key: null          # leave null to use cached wandb login
+wandb_notes: null
 # Set to an integer to use only a subset of data (useful for debugging)
 max_train_samples: null
 max_val_samples: null
