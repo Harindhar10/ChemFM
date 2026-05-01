@@ -82,6 +82,7 @@ def load_model_and_tokenizer(model_args, args):
         trust_remote_code=True,
         low_cpu_mem_usage=True,
         quantization_config=bnb_config,
+        dtype=torch.float16,
     )
 
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
