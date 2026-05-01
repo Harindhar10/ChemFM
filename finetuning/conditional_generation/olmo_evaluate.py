@@ -9,21 +9,15 @@ import pandas as pd
 from dataclasses import dataclass, field
 from typing import Optional
 from accelerate import Accelerator
-from peft import PeftModel
 from torch.utils.data import DataLoader
-from torch.nn import functional as F
 from tqdm import tqdm
 from rdkit import RDLogger, Chem
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    BitsAndBytesConfig,
-)
+from huggingface_hub import hf_hub_download
+from transformers import AutoTokenizer
 
 from utils import (
     ModelArguments,
     DataArguments,
-    smart_tokenizer_and_embedding_resize,
     make_test_data_module,
 )
 from metric_calculator import get_similarity, get_scaffold
@@ -48,48 +42,33 @@ class OlmoEvalArguments:
 
 
 def load_model_and_tokenizer(model_args, args):
+    model_path = model_args.model_path  # HF repo ID or local path to fine-tuned model
+    if not model_path:
+        raise ValueError(
+            "model_path is not set. Pass --model_path <hf-repo-id> or "
+            "--model_path <path/to/final_model> (the directory saved after training)."
+        )
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_path,
         padding_side="right",
         use_fast=True,
         trust_remote_code=True,
     )
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.float16,
-    )
-
-    base_model = AutoModelForCausalLM.from_pretrained(
-        model_args.pretrain_model,
-        trust_remote_code=True,
-        low_cpu_mem_usage=True,
-        quantization_config=bnb_config,
-        dtype=torch.float16,
-        device_map=None,
-    )
-
-    model = PeftModel.from_pretrained(base_model, model_args.model_path)
-
     if tokenizer.pad_token is None:
-        special_tokens_dict = dict(pad_token=DEFAULT_PAD_TOKEN)
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=special_tokens_dict,
-            tokenizer=tokenizer,
-            model=model,
-        )
-    model.config.pad_token_id = tokenizer.pad_token_id
-    # Enable KV cache for faster autoregressive generation
-    model.config.use_cache = True
+        tokenizer.pad_token = tokenizer.eos_token
 
-    lit_model = OlmoConditionalGenModule(model=model, tokenizer=tokenizer, args=args)
+    lit_model = OlmoConditionalGenModule(model_id=model_path, tokenizer=tokenizer, args=args)
+    lit_model.configure_model()
+    lit_model.model.config.use_cache = True
 
-    numerical_embedding_path = os.path.join(
-        model_args.model_path, "numerical_embedding.pt"
-    )
-    state_dict = torch.load(numerical_embedding_path, map_location="cpu")
+    num_emb_local = os.path.join(model_path, "numerical_embedding.pt")
+    if os.path.exists(num_emb_local):
+        num_emb_path = num_emb_local
+    else:
+        num_emb_path = hf_hub_download(repo_id=model_path, filename="numerical_embedding.pt")
+
+    state_dict = torch.load(num_emb_path, map_location="cpu", weights_only=True)
     lit_model.numerical_embedding.load_state_dict(state_dict)
 
     lit_model.eval()
@@ -98,74 +77,39 @@ def load_model_and_tokenizer(model_args, args):
 
 def generate(model, loader, accelerator, tokenizer, max_length):
     model.eval()
+    inner_model = accelerator.unwrap_model(model).model
 
     df = []
     pbar = tqdm(loader, desc="Evaluating...", leave=False)
     for it, batch in enumerate(pbar):
         sub_df = dict()
 
-        batch_size = batch["input_ids"].shape[0]
-        assert batch_size == 1, "The batch size should be 1"
+        assert batch["input_ids"].shape[0] == 1, "The batch size should be 1"
 
         temperature = batch["temperature"][0]
         property_names = batch["property_names"][0]
         non_normalized_properties = batch["non_normalized_properties"][0]
         scaffold = batch["scaffold"][0]
-
-        # Keep properties and properties_index in batch for embedding injection each step.
-        # Remove the non-tensor meta fields before the generation loop.
-        del batch["temperature"]
-        del batch["property_names"]
-        del batch["non_normalized_properties"]
-        del batch["scaffold"]
-
-        input_length = batch["input_ids"].shape[1]
-        steps = max_length - input_length
+        steps = max_length - batch["input_ids"].shape[1]
 
         with torch.no_grad():
-            early_stop_flags = torch.zeros(1, dtype=torch.bool).to(
-                batch["input_ids"].device
+            # Inject numerical embeddings once for the prompt; generate() handles the rest.
+            inputs_embeds = model.inject_numerical_embeddings(
+                batch["input_ids"],
+                batch["properties"],
+                batch["properties_index"],
             )
-            for k in range(steps):
-                # Inject numerical embeddings at the fixed prefix positions each step.
-                # properties_index values are absolute positions and never shift
-                # as new tokens are appended to the right.
-                inputs_embeds = model.inject_numerical_embeddings(
-                    batch["input_ids"],
-                    batch["properties"],
-                    batch["properties_index"],
-                )
-                outputs = model.model(
-                    inputs_embeds=inputs_embeds,
-                    attention_mask=batch["attention_mask"],
-                )
-                logits = outputs.logits[:, -1, :] / temperature
-                probs = F.softmax(logits, dim=-1)
-                ix = torch.multinomial(probs, num_samples=1)
+            output_ids = inner_model.generate(
+                inputs_embeds=inputs_embeds,
+                attention_mask=batch["attention_mask"],
+                max_new_tokens=steps,
+                do_sample=True,
+                temperature=float(temperature),
+                eos_token_id=tokenizer.eos_token_id,
+                pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+            )
 
-                ix[early_stop_flags] = tokenizer.eos_token_id
-
-                batch["input_ids"] = torch.cat([batch["input_ids"], ix], dim=-1)
-                # Extend attention mask to cover the newly appended token
-                batch["attention_mask"] = torch.cat(
-                    [
-                        batch["attention_mask"],
-                        torch.ones(
-                            (1, 1),
-                            dtype=batch["attention_mask"].dtype,
-                            device=batch["attention_mask"].device,
-                        ),
-                    ],
-                    dim=-1,
-                )
-                early_stop_flags |= ix.squeeze() == tokenizer.eos_token_id
-
-                if torch.all(early_stop_flags):
-                    break
-
-        generations = tokenizer.batch_decode(
-            batch["input_ids"][:, input_length:], skip_special_tokens=True
-        )
+        generations = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         generations = [g.replace(" ", "") for g in generations]
 
         predictions = []
@@ -240,9 +184,19 @@ def evaluate():
     )
 
     if eval_args.training_args_file is not None:
+        explicit_keys = {
+            arg.lstrip("-").split("=")[0].replace("-", "_")
+            for arg in sys.argv if arg.startswith("--")
+        }
+        pre_yaml = {**vars(model_args), **vars(data_args), **vars(eval_args)}
+        cli_overrides = {k: v for k, v in pre_yaml.items() if k in explicit_keys}
         model_args, data_args, eval_args = hfparser.parse_yaml_file(
             eval_args.training_args_file
         )
+        for k, v in cli_overrides.items():
+            for ns in (model_args, data_args, eval_args):
+                if hasattr(ns, k):
+                    setattr(ns, k, v)
 
     args = argparse.Namespace(**vars(model_args), **vars(data_args), **vars(eval_args))
 
