@@ -192,7 +192,6 @@ def main():
         monitor="val_loss",
         mode="min",
         save_top_k=3,
-        save_last=True,
         every_n_train_steps=args.save_steps,
     )
     lr_monitor = LearningRateMonitor(logging_interval="step")
