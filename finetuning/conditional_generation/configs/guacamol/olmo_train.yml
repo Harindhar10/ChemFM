@@ -1,16 +1,10 @@
-# OLMo conditional generation training config — GuacaMol dataset
+# OLMo conditional generation training config — GuacaMol dataset (FSDP full fine-tuning)
 # Run: python olmo_main.py --training_args_file configs/guacamol/olmo_train.yml
 
 # Model
 pretrain_model: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
 tokenizer_path: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
 trust_remote_code: True
-
-# LoRA — all fields map to ModelArguments
-lora_rank: 32
-lora_alpha_ratio: 2.0    # lora_alpha = lora_alpha_ratio * lora_rank = 64
-lora_dropout: 0.05
-lora_target_modules: "q_proj,k_proj,v_proj"
 
 # Data
 dataset: "guacamol"
@@ -31,7 +25,7 @@ learning_rate: 6.0e-4
 min_learning_rate: 6.0e-5
 weight_decay: 0.01
 max_grad_norm: 1.0
-warmup_ratio: 0.01
+warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 precision: "bf16-mixed"
 seed: 0

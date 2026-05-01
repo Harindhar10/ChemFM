@@ -2,27 +2,26 @@ import argparse
 import os
 import sys
 import random
+from functools import partial
+
 import numpy as np
 import torch
 import transformers
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.strategies import FSDPStrategy
 from torch.utils.data import DataLoader
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+from torch.distributed.fsdp import ShardingStrategy
 from dataclasses import dataclass, field
 from typing import Optional
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    BitsAndBytesConfig,
-    set_seed,
-)
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from transformers import AutoTokenizer, AutoModelForCausalLM, set_seed
+from huggingface_hub import HfApi
 
 from utils import (
     ModelArguments,
     DataArguments,
-    smart_tokenizer_and_embedding_resize,
     make_data_module,
 )
 from olmo_customized_models import OlmoConditionalGenModule
@@ -64,65 +63,19 @@ class OlmoTrainingArguments:
     wandb_logging: bool = field(default=False)
     wandb_key: Optional[str] = field(default=None)
     wandb_notes: Optional[str] = field(default=None)
+    save_name: Optional[str] = field(default=None)
 
 
-def load_model_and_tokenizer(model_args, args):
+def load_tokenizer(model_args):
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_path,
         padding_side="right",
         use_fast=True,
         trust_remote_code=True,
     )
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-        # bfloat16 for training stability (float16 is for inference only)
-        bnb_4bit_compute_dtype=torch.float16,
-    )
-
-    # Do NOT pass device_map="auto" — Lightning manages device placement
-    model = AutoModelForCausalLM.from_pretrained(
-        model_args.pretrain_model,
-        trust_remote_code=True,
-        low_cpu_mem_usage=True,
-        quantization_config=bnb_config,
-        dtype=torch.float16,
-        device_map=None,
-    )
-
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
-
-    # lora_rank, lora_alpha_ratio, lora_dropout, lora_target_modules all come from ModelArguments
-    target_modules = (
-        [m.strip() for m in args.lora_target_modules.split(",")]
-        if args.lora_target_modules
-        else ["q_proj", "k_proj", "v_proj"]
-    )
-    lora_cfg = LoraConfig(
-        r=args.lora_rank,
-        lora_alpha=int(args.lora_alpha_ratio * args.lora_rank),
-        target_modules=target_modules,
-        lora_dropout=args.lora_dropout,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, lora_cfg)
-
     if tokenizer.pad_token is None:
-        special_tokens_dict = dict(pad_token=DEFAULT_PAD_TOKEN)
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=special_tokens_dict,
-            tokenizer=tokenizer,
-            model=model,
-        )
-    model.config.pad_token_id = tokenizer.pad_token_id
-    # Required for gradient checkpointing compatibility
-    model.config.use_cache = False
-
-    model.print_trainable_parameters()
-    return model, tokenizer
+        tokenizer.pad_token = tokenizer.eos_token
+    return tokenizer
 
 
 def main():
@@ -157,7 +110,7 @@ def main():
     random.seed(args.seed)
     pl.seed_everything(args.seed, workers=True)
 
-    model, tokenizer = load_model_and_tokenizer(model_args, args)
+    tokenizer = load_tokenizer(model_args)
 
     data_module = make_data_module(tokenizer=tokenizer, ignore_index=IGNORE_INDEX, args=args)
 
@@ -183,16 +136,35 @@ def main():
         pin_memory=True,
     )
 
-    lit_model = OlmoConditionalGenModule(model=model, tokenizer=tokenizer, args=args)
+    lit_model = OlmoConditionalGenModule(
+        model_id=args.pretrain_model, tokenizer=tokenizer, args=args
+    )
+
+    # Force model init to get transformer layer class for FSDP wrapping policy
+    lit_model.configure_model()
+
+    auto_wrap_policy = partial(
+        transformer_auto_wrap_policy,
+        transformer_layer_cls={type(lit_model.model.model.layers[0])},
+    )
+    fsdp_strategy = FSDPStrategy(
+        sharding_strategy=ShardingStrategy.FULL_SHARD,
+        auto_wrap_policy=auto_wrap_policy,
+        activation_checkpointing_policy=auto_wrap_policy,
+        cpu_offload=False,
+        use_orig_params=True,
+        sync_module_states=True,
+        state_dict_type="full",
+    )
 
     run_name = args.run_id or "olmo-cond-gen"
     checkpoint_callback = ModelCheckpoint(
         dirpath=args.output_dir,
-        filename=f"{run_name}-{{epoch:02d}}-{{val_loss:.4f}}",
+        filename=run_name,
         monitor="val_loss",
         mode="min",
-        save_top_k=3,
-        every_n_train_steps=args.save_steps,
+        save_top_k=1,
+        save_weights_only=True,
     )
     lr_monitor = LearningRateMonitor(logging_interval="step")
 
@@ -214,25 +186,61 @@ def main():
     trainer = pl.Trainer(
         max_epochs=args.num_train_epochs,
         accelerator="gpu",
-        devices="auto",
+        devices=torch.cuda.device_count(),
+        strategy=fsdp_strategy,
         precision=args.precision,
         accumulate_grad_batches=args.gradient_accumulation_steps,
         gradient_clip_val=args.max_grad_norm,
         log_every_n_steps=args.logging_steps,
-        # Fraction of epoch: 1/num_val_per_epoch triggers validation that many times per epoch
         val_check_interval=1.0 / args.num_val_per_epoch,
         callbacks=[checkpoint_callback, lr_monitor],
         logger=loggers,
         enable_progress_bar=True,
-        # BnB custom CUDA kernels are non-deterministic; forcing determinism raises errors
         deterministic=False,
-        # DDP is compatible with bitsandbytes; FSDP and DeepSpeed are not
     )
 
     trainer.fit(lit_model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
-    final_adapter_dir = os.path.join(args.output_dir, "final_adapter")
-    lit_model.save_adapter(final_adapter_dir)
+    trainer.strategy.barrier()
+    if trainer.global_rank == 0:
+        final_model_dir = os.path.join(args.output_dir, "final_model")
+        os.makedirs(final_model_dir, exist_ok=True)
+
+        ckpt_path = os.path.join(args.output_dir, f"{run_name}.ckpt")
+        print(f"Checkpoint path: {ckpt_path}")
+
+        reload_model = AutoModelForCausalLM.from_pretrained(
+            args.pretrain_model,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+        )
+
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        state = ckpt.get("state_dict", ckpt)
+
+        model_state = {k[len("model."):]: v for k, v in state.items() if k.startswith("model.")}
+        num_emb_state = {k[len("numerical_embedding."):]: v for k, v in state.items() if k.startswith("numerical_embedding.")}
+
+        reload_model.load_state_dict(model_state, strict=True)
+
+        if args.save_name:
+            print(f"Pushing model to HF Hub: {args.save_name}")
+            reload_model.push_to_hub(args.save_name)
+            tokenizer.push_to_hub(args.save_name)
+            num_emb_path = os.path.join(args.output_dir, "numerical_embedding.pt")
+            torch.save(num_emb_state, num_emb_path)
+            HfApi().upload_file(
+                path_or_fileobj=num_emb_path,
+                path_in_repo="numerical_embedding.pt",
+                repo_id=args.save_name,
+            )
+            print(f"Model pushed to {args.save_name}")
+        else:
+            reload_model.save_pretrained(final_model_dir)
+            torch.save(num_emb_state, os.path.join(final_model_dir, "numerical_embedding.pt"))
+            tokenizer.save_pretrained(final_model_dir)
+            print(f"Model saved to {final_model_dir}")
 
 
 if __name__ == "__main__":

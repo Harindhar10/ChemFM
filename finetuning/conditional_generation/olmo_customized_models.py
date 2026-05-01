@@ -1,20 +1,40 @@
 import os
+from functools import partial
+
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from transformers import get_cosine_schedule_with_warmup, get_constant_schedule_with_warmup
+from transformers import AutoModelForCausalLM, AutoConfig, get_cosine_schedule_with_warmup, get_constant_schedule_with_warmup
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from typing import List, Any, Dict
 
 
 class OlmoConditionalGenModule(pl.LightningModule):
 
-    def __init__(self, model, tokenizer, args):
+    def __init__(self, model_id, tokenizer, args):
         super().__init__()
-        self.model = model
+        self.model_id = model_id
         self.tokenizer = tokenizer
         self.args = args
-        self.numerical_embedding = nn.Linear(1, model.config.hidden_size, bias=True)
-        self.save_hyperparameters(ignore=["model", "tokenizer"])
+        self.model = None
+
+        config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+        self.numerical_embedding = nn.Linear(1, config.hidden_size, bias=True)
+        self.save_hyperparameters(ignore=["tokenizer"])
+
+    def configure_model(self):
+        if self.model is not None:
+            return
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_id,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            use_cache=False,
+            low_cpu_mem_usage=True,
+            device_map=None,
+            attn_implementation="flash_attention_2",
+        )
+        self.numerical_embedding = self.numerical_embedding.to(torch.bfloat16)
 
     def transfer_batch_to_device(self, batch, device, dataloader_idx):
         # Move tensors to device but leave Python lists (properties, properties_index) as-is.
@@ -84,13 +104,23 @@ class OlmoConditionalGenModule(pl.LightningModule):
         return outputs.loss
 
     def configure_optimizers(self):
-        trainable_params = [p for p in self.parameters() if p.requires_grad]
+        decay_params = []
+        no_decay_params = []
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                if "bias" in name or "layer_norm" in name.lower():
+                    no_decay_params.append(param)
+                else:
+                    decay_params.append(param)
+
         optimizer = torch.optim.AdamW(
-            trainable_params,
+            [
+                {"params": decay_params, "weight_decay": self.args.weight_decay},
+                {"params": no_decay_params, "weight_decay": 0.0},
+            ],
             lr=self.args.learning_rate,
-            weight_decay=self.args.weight_decay,
-            betas=(0.9, 0.999),
-            eps=1e-8,
+            betas=(0.9, 0.95),
+            eps=1e-5,
         )
 
         total_steps = self.trainer.estimated_stepping_batches
@@ -118,11 +148,15 @@ class OlmoConditionalGenModule(pl.LightningModule):
             },
         }
 
-    def save_adapter(self, output_dir: str) -> None:
+    def configure_gradient_clipping(self, optimizer, gradient_clip_val, gradient_clip_algorithm):
+        clip_val = gradient_clip_val if gradient_clip_val is not None else 1.0
+        torch.nn.utils.clip_grad_norm_(self.parameters(), clip_val)
+
+    def save_model(self, output_dir: str) -> None:
         os.makedirs(output_dir, exist_ok=True)
         self.model.save_pretrained(output_dir)
         torch.save(
             self.numerical_embedding.state_dict(),
             os.path.join(output_dir, "numerical_embedding.pt"),
         )
-        print(f"Adapter and numerical embedding saved to {output_dir}")
+        print(f"Model and numerical embedding saved to {output_dir}")
