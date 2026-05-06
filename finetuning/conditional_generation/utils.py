@@ -283,6 +283,7 @@ class DataCollatorForCausalLM(object):
     sme: SMILESAugmenter
     ignore_index: int
     has_scaffold: bool
+    _printed_sample: bool = field(default=False, init=False)
 
     def augment_molecule(self, molecule: str) -> str:
         """
@@ -371,6 +372,12 @@ class DataCollatorForCausalLM(object):
         # Apply padding
         input_ids = pad_sequence(input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id)
         labels = pad_sequence(labels, batch_first=True, padding_value=self.ignore_index)
+
+        if not self._printed_sample:
+            print("\n--- Decoded sample prompt (input_ids[0]) ---")
+            print(self.tokenizer.decode(input_ids[0], skip_special_tokens=False))
+            print("--- End ---\n")
+            self._printed_sample = True
 
         data_dict = {
             'input_ids': input_ids,
