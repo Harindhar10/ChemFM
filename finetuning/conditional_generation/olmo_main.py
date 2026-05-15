@@ -55,7 +55,7 @@ class OlmoTrainingArguments:
     logging_steps: int = field(default=10)
     num_val_per_epoch: int = field(default=1)
     save_steps: int = field(default=500)
-    precision: str = field(default="bf16-mixed")
+    precision: str = field(default="16-mixed")
     training_args_file: Optional[str] = field(default=None)
     run_id: Optional[str] = field(default=None)
     num_workers: int = field(default=4)

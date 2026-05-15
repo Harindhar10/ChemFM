@@ -19,7 +19,7 @@ class OlmoConditionalGenModule(pl.LightningModule):
         self.model = None
 
         config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
-        self.numerical_embedding = nn.Linear(1, config.hidden_size, bias=True)
+        self.numerical_embedding = nn.Linear(1, config.hidden_size, bias=True, dtype=torch.float16)
         self.save_hyperparameters(ignore=["tokenizer"])
 
     def configure_model(self):
@@ -64,7 +64,7 @@ class OlmoConditionalGenModule(pl.LightningModule):
             if len(props) == 0:
                 continue
             props_tensor = torch.tensor(
-                props, device=embed_device, dtype=torch.float32
+                props, device=embed_device, dtype=embed_dtype
             ).unsqueeze(1)  # (N_props, 1)
             num_embeds = self.numerical_embedding(props_tensor)  # (N_props, H) float32
             num_embeds = num_embeds.to(dtype=embed_dtype)        # cast to bfloat16
