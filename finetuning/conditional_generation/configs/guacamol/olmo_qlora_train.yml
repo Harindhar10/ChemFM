@@ -1,0 +1,51 @@
+# Model
+pretrain_model: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
+tokenizer_path: "harindhar10/OLMo-7B-fsdp-Pubchem-500k-1epochs-eos"
+trust_remote_code: True
+
+lora_rank: 32
+lora_alpha_ratio: 2.0    # lora_alpha = lora_alpha_ratio * lora_rank = 64
+lora_dropout: 0.05
+lora_target_modules: "q_proj,k_proj,v_proj"
+
+# Data
+dataset: "guacamol"
+data_dir: "./data_temp"
+has_scaffold: False
+scaffold_aug_prob: 0.0
+molecule_target_aug_prob: 1.0
+source_max_len: 512
+target_max_len: 512
+
+# Training
+num_train_epochs: 10
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 2
+# effective batch size = 2 * 16 = 32 (matches ChemFM-3B run of 12 * 4 = 48)
+gradient_accumulation_steps: 16
+learning_rate: 6.0e-4
+min_learning_rate: 6.0e-5
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_ratio: 0.1
+lr_scheduler_type: "cosine"
+precision: "16-mixed"
+seed: 0
+
+# Logging / checkpointing
+output_dir: "./outputs/olmo_guacamol_qlora"
+logging_steps: 10
+num_val_per_epoch: 2     # validate twice per epoch (val_check_interval = 0.5)
+save_steps: 500
+num_workers: 4
+
+# Run identity
+run_id: "olmo-guacamol-qlora-run1"
+
+# W&B — set wandb_logging: true to enable
+wandb_logging: false
+wandb_key: null          # leave null to use cached wandb login
+wandb_notes: null
+# Set to an integer to use only a subset of data (useful for debugging)
+max_train_samples: null
+max_val_samples: null
