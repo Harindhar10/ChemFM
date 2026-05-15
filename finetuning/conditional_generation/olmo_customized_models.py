@@ -11,12 +11,12 @@ from typing import List, Any, Dict
 
 class OlmoConditionalGenModule(pl.LightningModule):
 
-    def __init__(self, model_id, tokenizer, args):
+    def __init__(self, model_id, tokenizer, args, model=None):
         super().__init__()
         self.model_id = model_id
         self.tokenizer = tokenizer
         self.args = args
-        self.model = None
+        self.model = model
         self._printed_forward_sample = False
 
         config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
