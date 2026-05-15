@@ -19,7 +19,8 @@ class OlmoConditionalGenModule(pl.LightningModule):
         self.model = model
         self._printed_forward_sample = False
 
-        config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+        if self.model is None:
+            config = AutoConfig.from_pretrained(self.model_id, trust_remote_code=True)
         self.numerical_embedding = nn.Linear(1, config.hidden_size, bias=True, dtype=torch.float16)
         self.save_hyperparameters(ignore=["tokenizer"])
 
