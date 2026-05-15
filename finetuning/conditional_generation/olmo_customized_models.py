@@ -34,6 +34,8 @@ class OlmoConditionalGenModule(pl.LightningModule):
             device_map=None,
             attn_implementation="flash_attention_2",
         )
+        if len(self.tokenizer) != self.model.get_input_embeddings().weight.shape[0]:
+            self.model.resize_token_embeddings(len(self.tokenizer))
         self.numerical_embedding = self.numerical_embedding.to(torch.bfloat16)
 
     def transfer_batch_to_device(self, batch, device, dataloader_idx):

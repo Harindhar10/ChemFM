@@ -35,6 +35,7 @@ RDLogger.DisableLog("rdApp.*")
 
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "[PAD]"
+EXTRA_SPECIAL_TOKENS = ["<qed>", "<logp>", "<SAS>", "<TPSA>", "<molstart>", "<pstart>", "<->>"]
 
 
 @dataclass
@@ -75,6 +76,7 @@ def load_tokenizer(model_args):
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.add_special_tokens({"additional_special_tokens": EXTRA_SPECIAL_TOKENS})
     return tokenizer
 
 
@@ -215,6 +217,8 @@ def main():
             trust_remote_code=True,
             low_cpu_mem_usage=True,
         )
+        if len(tokenizer) != reload_model.get_input_embeddings().weight.shape[0]:
+            reload_model.resize_token_embeddings(len(tokenizer))
 
         ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         state = ckpt.get("state_dict", ckpt)
