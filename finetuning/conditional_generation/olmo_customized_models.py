@@ -11,7 +11,7 @@ from typing import List, Any, Dict
 
 class OlmoConditionalGenModule(pl.LightningModule):
 
-    def __init__(self, model_id, tokenizer, args, model=None):
+    def __init__(self, tokenizer, args, model=None, model_id=None):
         super().__init__()
         self.model_id = model_id
         self.tokenizer = tokenizer
