@@ -21,7 +21,10 @@ class OlmoConditionalGenModule(pl.LightningModule):
 
         if self.model is None:
             config = AutoConfig.from_pretrained(self.model_id, trust_remote_code=True)
-        self.numerical_embedding = nn.Linear(1, config.hidden_size, bias=True, dtype=torch.float16)
+            hidden_size = config.hidden_size
+        else:
+            hidden_size = model.config.hidden_size
+        self.numerical_embedding = nn.Linear(1, hidden_size, bias=True, dtype=torch.float16)
         self.save_hyperparameters(ignore=["tokenizer"])
 
     def configure_model(self):
