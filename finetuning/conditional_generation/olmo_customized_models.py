@@ -27,16 +27,16 @@ class OlmoConditionalGenModule(pl.LightningModule):
             return
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float16,
             trust_remote_code=True,
             use_cache=False,
             low_cpu_mem_usage=True,
             device_map=None,
-            attn_implementation="flash_attention_2",
+            attn_implementation="sdpa",
         )
         if len(self.tokenizer) != self.model.get_input_embeddings().weight.shape[0]:
             self.model.resize_token_embeddings(len(self.tokenizer))
-        self.numerical_embedding = self.numerical_embedding.to(torch.bfloat16)
+        self.numerical_embedding = self.numerical_embedding.to(torch.float16)
 
     def transfer_batch_to_device(self, batch, device, dataloader_idx):
         # Move tensors to device but leave Python lists (properties, properties_index) as-is.
