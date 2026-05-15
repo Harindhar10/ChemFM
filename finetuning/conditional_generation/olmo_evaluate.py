@@ -112,6 +112,7 @@ def generate(model, loader, accelerator, tokenizer, max_length):
         generations = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         generations = [g.replace(" ", "") for g in generations]
 
+        print('generations before validity check: ', generations)
         predictions = []
         for generation in generations:
             try:
