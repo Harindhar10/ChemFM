@@ -24,17 +24,17 @@ class OlmoConditionalGenModule(pl.LightningModule):
         self.save_hyperparameters(ignore=["tokenizer"])
 
     def configure_model(self):
-        if self.model is not None:
-            return
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_id,
-            torch_dtype=torch.float16,
-            trust_remote_code=True,
-            use_cache=False,
-            low_cpu_mem_usage=True,
-            device_map=None,
-            attn_implementation="sdpa",
-        )
+        if self.model is None:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_id,
+                torch_dtype=torch.float16,
+                trust_remote_code=True,
+                use_cache=False,
+                low_cpu_mem_usage=True,
+                device_map=None,
+                attn_implementation="sdpa",
+            )
+
         if len(self.tokenizer) != self.model.get_input_embeddings().weight.shape[0]:
             self.model.resize_token_embeddings(len(self.tokenizer))
         self.numerical_embedding = self.numerical_embedding.to(torch.float16)
@@ -167,11 +167,12 @@ class OlmoConditionalGenModule(pl.LightningModule):
         clip_val = gradient_clip_val if gradient_clip_val is not None else 1.0
         torch.nn.utils.clip_grad_norm_(self.parameters(), clip_val)
 
-    def save_model(self, output_dir: str) -> None:
+    def save_adapter(self, output_dir: str) -> None:
         os.makedirs(output_dir, exist_ok=True)
         self.model.save_pretrained(output_dir)
+        self.tokenizer.save_pretrained(output_dir)
         torch.save(
             self.numerical_embedding.state_dict(),
             os.path.join(output_dir, "numerical_embedding.pt"),
         )
-        print(f"Model and numerical embedding saved to {output_dir}")
+        print(f"Adapter, tokenizer, and numerical embedding saved to {output_dir}")
