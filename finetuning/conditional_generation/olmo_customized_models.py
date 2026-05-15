@@ -17,6 +17,7 @@ class OlmoConditionalGenModule(pl.LightningModule):
         self.tokenizer = tokenizer
         self.args = args
         self.model = None
+        self._printed_forward_sample = False
 
         config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
         self.numerical_embedding = nn.Linear(1, config.hidden_size, bias=True, dtype=torch.float16)
@@ -78,6 +79,18 @@ class OlmoConditionalGenModule(pl.LightningModule):
         labels = batch["labels"]
         properties = batch["properties"]
         properties_index = batch["properties_index"]
+
+        if not self._printed_forward_sample:
+            print("\n--- Lightning training_step sample[0] ---")
+            print("input_ids decoded:")
+            print(self.tokenizer.decode(input_ids[0], skip_special_tokens=False))
+            label_ids = labels[0]
+            label_ids_clean = label_ids[label_ids != -100]
+            print("labels decoded (ignore_index=-100 filtered):")
+            print(self.tokenizer.decode(label_ids_clean, skip_special_tokens=False))
+            print(f"labels raw (first 50): {label_ids[:50].tolist()}")
+            print("--- End ---\n")
+            self._printed_forward_sample = True
 
         inputs_embeds = self.inject_numerical_embeddings(input_ids, properties, properties_index)
         outputs = self.model(
