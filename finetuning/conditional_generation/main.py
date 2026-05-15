@@ -136,8 +136,9 @@ def main():
 
     # load model and tokenizer
     model, tokenizer = load_model_and_tokenizer(model_args, args)
+    model._tokenizer = tokenizer
 
-    data_module = make_data_module(tokenizer=tokenizer, ignore_index=IGNORE_INDEX, 
+    data_module = make_data_module(tokenizer=tokenizer, ignore_index=IGNORE_INDEX,
                                    args=args)
     
     # set the min learning rate for the optimizer

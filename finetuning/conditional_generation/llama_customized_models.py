@@ -107,6 +107,8 @@ class LlamaForCausalLMWithNumericalEmbedding(LlamaForCausalLM):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
         self.numerical_embedding = torch.nn.Linear(1, config.hidden_size, bias=True)
+        self._tokenizer = None
+        self._printed_forward_sample = False
 
 
     def forward(
@@ -139,6 +141,19 @@ class LlamaForCausalLMWithNumericalEmbedding(LlamaForCausalLM):
             if len(props_index) > 0:
                 assert embeddings[i, props_index, :].shape == num_embeds.shape, "The shape of the embeddings and the numerical embeddings should be the same."
                 embeddings[i, props_index, :] = num_embeds
+
+        if not self._printed_forward_sample and self._tokenizer is not None:
+            print("\n--- Model forward sample[0] ---")
+            print("input_ids decoded:")
+            print(self._tokenizer.decode(input_ids[0], skip_special_tokens=False))
+            if labels is not None:
+                label_ids = labels[0]
+                label_ids_clean = label_ids[label_ids != -100]
+                print("labels decoded (ignore_index=-100 filtered):")
+                print(self._tokenizer.decode(label_ids_clean, skip_special_tokens=False))
+                print(f"labels raw (first 50): {label_ids[:50].tolist()}")
+            print("--- End ---\n")
+            self._printed_forward_sample = True
 
         return super().forward(
             input_ids=None,

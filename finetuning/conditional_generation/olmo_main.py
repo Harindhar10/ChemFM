@@ -213,7 +213,7 @@ def main():
 
         reload_model = AutoModelForCausalLM.from_pretrained(
             args.pretrain_model,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float16,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
         )
